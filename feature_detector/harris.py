@@ -33,45 +33,6 @@ def _harris_response(gray: np.ndarray, sigma_i: float, k: float,
     return a * b - c * c - k * (a + b) ** 2
 
 
-def harris_response(image: np.ndarray, sigma: float = 2.0,
-                    k: float = 0.04, differentiation_ratio: float = 0.7
-                    ) -> np.ndarray:
-    """Return the full floating-point Harris response map at a single scale."""
-    if sigma <= 0 or not 0 < k < 0.25 or differentiation_ratio <= 0:
-        raise ValueError('Require sigma>0, 0<k<0.25 and differentiation_ratio>0')
-    return _harris_response(to_grayscale(image), sigma, k, differentiation_ratio)
-
-
-def harris_corners(image: np.ndarray, sigma: float = 2.0,
-                   threshold_rel: float = 0.01,
-                   k: float = 0.04,
-                   max_points: int | None = 1000) -> list[Keypoint]:
-    """Single-scale Harris corner detector, without Laplacian scale selection."""
-    if sigma <= 0 or not 0 < k < 0.25:
-        raise ValueError("Require sigma > 0 and 0<k<0.25")
-    if not 0 <= threshold_rel < 1:
-        raise ValueError('threshold_rel must lie in [0,1)')
-    if max_points is not None and max_points < 1:
-        raise ValueError('max_points must be positive or None')
-    gray = to_grayscale(image)
-    response = _harris_response(gray, sigma, k, 0.7)
-    mx = float(np.max(response))
-    if mx <= 0:
-        return []
-    spatial = response == maximum_filter(response, size=3, mode='nearest')
-    mask = spatial & (response > max(mx * threshold_rel, 0))
-    b = max(2, int(np.ceil(3 * sigma)))
-    mask[:b, :] = False
-    mask[-b:, :] = False
-    mask[:, :b] = False
-    mask[:, -b:] = False
-    yy, xx = np.nonzero(mask)
-    points = [Keypoint(float(x), float(y), float(sigma),
-                        float(response[y, x]))
-              for y, x in zip(yy, xx)]
-    points.sort(key=lambda p: (-p.response, p.y, p.x))
-    return points[:max_points] if max_points is not None else points
-
 
 class HarrisLaplaceDetector:
     """Simplified Harris-Laplace corner detector (Mikolajczyk-Schmid, 2004).
