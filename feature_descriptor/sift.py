@@ -40,10 +40,14 @@ class Keypoint:
     response: float = 0.0 # Response value used to reject low contrast keypoints, can be used for filtering later 
     type: str = ""
 
-"""
-points: (N, 3) keypoints.
-"""
+
 def harris_laplace_keypoint(points: np.ndarray, sigma_is_derivation=False, s=0.7) -> List[Keypoint]:
+    """
+    points: (N, 3) keypoints generated from harris-laplace feature detector
+    sigma_is_derivation=False is correct for our implementation, the integration sigma is provided.
+
+    returns: a standardised keypoint (Keypoint instance) that the sift algorithm can use to compute a descriptor.
+    """
     keypoints = []
     for x, y, sig in points:
         if sigma_is_derivation:
@@ -55,6 +59,11 @@ def harris_laplace_keypoint(points: np.ndarray, sigma_is_derivation=False, s=0.7
 
 def difference_of_gaussians_keypoint(points: np.ndarray, sigma_0: float = 1.6, n_layers: int = 3, 
                                      octave_unsampled: bool = True) -> List[Keypoint]:
+    """
+    points: (N, 3) keypoints generated from difference of gaussians feature detector
+    num
+    returns: a standardised keypoint (Keypoint instance) that the sift algorithm can use to compute a descriptor.
+    """
     keypoints = []
     for p in points:
         x, y, octave, layer = p[:4]
@@ -75,8 +84,7 @@ class GradientCache:
     """
     Blurs the image to the scale each keypoint needs and caches gradients.
     Simple version: quantise sigma to a log grid and blur the full image once
-    per level. (A full octave pyramid is faster -- you can reuse your DoG
-    pyramid here if you have it.)
+    per level.
     """
     def __init__(self, image: np.ndarray, assumed_blur: float = 0.5,
                  levels_per_octave: int = 6):
