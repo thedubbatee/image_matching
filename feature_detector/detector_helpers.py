@@ -3,7 +3,7 @@
 Conventions for all stages:
     x, y  : coordinates in the ORIGINAL image (pixels).
     sigma : Gaussian feature scale in ORIGINAL-image pixels.
-    angle : dominant orientation in degrees, or None if not yet assigned.
+    angle : dominant orientation in radians, or None if not yet assigned.
 
 The descriptor should consume these common fields, regardless of detector.
 """
@@ -65,7 +65,8 @@ def to_opencv_keypoints(points: Sequence[Keypoint]) -> list:
 
     OpenCV's size is a diameter, while our sigma is a Gaussian standard
     deviation. size=2*sigma is a convenient *adapter convention*, not a
-    guarantee of identical descriptor support-region scaling.
+    guarantee of identical descriptor support-region scaling. Angles are
+    converted from shared radians to OpenCV degrees; None becomes -1.
     """
     try:
         import cv2
@@ -74,6 +75,6 @@ def to_opencv_keypoints(points: Sequence[Keypoint]) -> list:
 
     return [cv2.KeyPoint(
         x=float(p.x), y=float(p.y), size=2.0 * float(p.sigma),
-        angle=-1.0 if p.angle is None else float(p.angle),
+        angle=-1.0 if p.angle is None else float(np.degrees(p.angle) % 360.0),
         response=float(p.response),
     ) for p in points]
