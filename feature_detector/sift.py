@@ -198,8 +198,6 @@ def sift_describe(image: np.ndarray, keypoints: List[Keypoint]) -> Tuple[List[Ke
 
     returns: a tuple of a list of keypoints (one for each descriptor), and a np.darray
     """
-    if image.ndim != 2:
-            raise ValueError("expected a single-channel grayscale image")
 
     gray = to_grayscale(image)
     
