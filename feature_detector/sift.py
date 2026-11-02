@@ -1,7 +1,9 @@
 import numpy as np
 from typing import List, Optional, Tuple
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from scipy.ndimage import gaussian_filter
+
+from detector_helpers import Keypoint, to_grayscale
 
 """
 SIFT Feature Descriptor
@@ -28,19 +30,6 @@ DESC_BINS = 8 # 8 orientation bins per cell
 DESC_SCALE_FACTOR = 3.0 # each cell is 3 * sigma pixels wide
 DESC_MAG_CLIP = 0.2 # Capped value after first normalisation of descriptor
 
-HL = "Harris-Laplace" # Harris Laplace Tag
-DOG = "Difference of Gaussians" # Difference of Gaussians Tag
-
-@dataclass
-class Keypoint:
-    x: float # Col in original pixel coords
-    y: float # Row in original pixel coords
-    sigma: float # Normalised Scale
-    angle: Optional[float] = None # Radians
-    response: float = 0.0 # Response value used to reject low contrast keypoints, can be used for filtering later 
-    type: str = ""
-
-
 def harris_laplace_keypoint(points: np.ndarray, sigma_is_derivation=False, s=0.7) -> List[Keypoint]:
     """
     points: (N, 3) keypoints generated from harris-laplace feature detector
@@ -52,7 +41,7 @@ def harris_laplace_keypoint(points: np.ndarray, sigma_is_derivation=False, s=0.7
     for x, y, sig in points:
         if sigma_is_derivation:
             sig = sig / s
-        keypoints.append(Keypoint(x=float(x), y=float(y), sigma=float(sig), type="HL"))
+        keypoints.append(Keypoint(x=float(x), y=float(y), sigma=float(sig)))
 
     return keypoints
 
@@ -76,7 +65,7 @@ def difference_of_gaussians_keypoint(points: np.ndarray, sigma_0: float = 1.6, n
         if octave_unsampled:
             factor *= 0.5
 
-        keypoints.append(Keypoint(x=x * factor, y=y * factor, sigma=sig_oct * factor, response=float(resp), source=DOG))
+        keypoints.append(Keypoint(x=x * factor, y=y * factor, sigma=sig_oct * factor, response=float(resp)))
 
     return keypoints
 
@@ -211,6 +200,8 @@ def sift_describe(image: np.ndarray, keypoints: List[Keypoint]) -> Tuple[List[Ke
     """
     if image.ndim != 2:
             raise ValueError("expected a single-channel grayscale image")
+
+    gray = to_grayscale(image)
     
     # one gradient cache shared by all keypoints, so each scale is blurred once
     gradients = GradientCache(image)
