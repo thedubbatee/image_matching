@@ -201,7 +201,7 @@ def sift_describe(image: np.ndarray, keypoints: List[Keypoint]) -> Tuple[List[Ke
     if image.ndim != 2:
             raise ValueError("expected a single-channel grayscale image")
 
-    gray = to_grayscale(image)
+    gray = to_grayscale(gray)
     
     # one gradient cache shared by all keypoints, so each scale is blurred once
     gradients = GradientCache(image)
