@@ -1,0 +1,1 @@
+"""HPatches detector agreement checks."""
