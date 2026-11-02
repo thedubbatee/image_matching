@@ -85,8 +85,10 @@ class DoGDetector:
             ]
 
             # An extremum must be compared against all 26 neighbours:
-            # 8 in the scale below, 8 in the same scale, and 8 above.
+            # 9 in the scale below, 8 in the same scale, and 9 above.
             kernel = np.ones((3, 3), dtype=np.uint8)
+            spatial_kernel = kernel.copy()
+            spatial_kernel[1, 1] = 0  # Exclude the candidate itself.
 
             for s in range(1, len(dogs) - 1):
                 prev_dog = dogs[s - 1]
@@ -96,7 +98,7 @@ class DoGDetector:
                 max_neighbour = np.maximum(
                     np.maximum(
                         cv2.dilate(prev_dog, kernel),
-                        cv2.dilate(curr_dog, kernel),
+                        cv2.dilate(curr_dog, spatial_kernel),
                     ),
                     cv2.dilate(next_dog, kernel),
                 )
@@ -104,7 +106,7 @@ class DoGDetector:
                 min_neighbour = np.minimum(
                     np.minimum(
                         cv2.erode(prev_dog, kernel),
-                        cv2.erode(curr_dog, kernel),
+                        cv2.erode(curr_dog, spatial_kernel),
                     ),
                     cv2.erode(next_dog, kernel),
                 )

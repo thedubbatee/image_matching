@@ -3,7 +3,7 @@
 Conventions for all stages:
     x, y  : coordinates in the ORIGINAL image (pixels).
     sigma : Gaussian feature scale in ORIGINAL-image pixels.
-    angle : dominant orientation in degrees, or None if not yet assigned.
+    angle : dominant orientation in radians, or None if not yet assigned.
 
 The descriptor should consume these common fields, regardless of detector.
 """
@@ -20,11 +20,11 @@ import numpy as np
 class Keypoint:
     """A feature location, independent of the algorithm that detected it."""
 
-    x: float
-    y: float
-    sigma: float
+    x: float # Col
+    y: float # Row
+    sigma: float # Scale
     response: float = 0.0  # Harris strength or DoG contrast (not comparable).
-    angle: float | None = None
+    angle: float | None = None # Radians
 
 
 def to_grayscale(image: np.ndarray) -> np.ndarray:
