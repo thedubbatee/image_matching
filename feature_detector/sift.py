@@ -204,7 +204,7 @@ def sift_describe(image: np.ndarray, keypoints: List[Keypoint]) -> Tuple[List[Ke
     gray = to_grayscale(gray)
     
     # one gradient cache shared by all keypoints, so each scale is blurred once
-    gradients = GradientCache(image)
+    gradients = GradientCache(gray)
     
     out_kps, descs = [], []
     for kp in keypoints:
