@@ -20,11 +20,11 @@ import numpy as np
 class Keypoint:
     """A feature location, independent of the algorithm that detected it."""
 
-    x: float
-    y: float
-    sigma: float
+    x: float # Col
+    y: float # Row
+    sigma: float # Scale
     response: float = 0.0  # Harris strength or DoG contrast (not comparable).
-    angle: float | None = None # radians
+    angle: float | None = None # Radians
 
 
 def to_grayscale(image: np.ndarray) -> np.ndarray:
