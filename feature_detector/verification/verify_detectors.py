@@ -70,7 +70,7 @@ def make_detectors(names: list[str]) -> dict:
             factory = getattr(module, 'HarrisLaplaceFeatureDetector_create', None)
             if factory is None:
                 raise RuntimeError(
-                    'Harris–Laplace requires opencv-contrib-python. Install it in '
+                    'Harris-Laplace requires opencv-contrib-python. Install it in '
                     'a separate virtual environment with numpy and scipy; do not '
                     'install multiple OpenCV wheel variants together.')
             custom = HarrisLaplaceDetector()
