@@ -136,8 +136,7 @@ class HarrisLaplaceDetector:
                     if self.max_points is not None else candidates)
 
         selected: list[Keypoint] = []
-        # Most detections aren't nearby; grid bucketing avoids O(N^2) on
-        # large images with many corners. Keep original-scale coordinates.
+        
         cell_size = max(2.0, 2 * self.scales[-2] * max(1.0, self.dedup_radius))
         grid: dict[tuple[int, int], list[Keypoint]] = {}
         for point in candidates:
