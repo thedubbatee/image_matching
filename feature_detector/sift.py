@@ -105,25 +105,27 @@ class GradientCache:
     
 def assign_orientations(keypoint: Keypoint, gradients: GradientCache) -> List[Keypoint]:
     mag, ori = gradients.get(keypoint.sigma)
+    H, W = mag.shape
     weighted_sig = ORI_SIGMA_FACTOR * keypoint.sigma
     radius = int(round(ORI_RADIUS_FACTOR * weighted_sig))
+    cx, cy = int(round(keypoint.x)), int(round(keypoint.y))
+
+    # Window around the keypoint, clipped to the image
+    x0, x1 = max(cx - radius, 0), min(cx + radius, W - 1)
+    y0, y1 = max(cy - radius, 0), min(cy + radius, H - 1)
     hist = np.zeros(ORI_BINS)
 
-    # Building the gradient histograms
-    cx, cy = int(round(keypoint.x)), int(round(keypoint.y))
-    H, W = mag.shape
-    for dy in range(-radius, radius + 1):
-        for dx in range(-radius, radius + 1):
-            px, py = cx + dx, cy + dy
-            if not (0 <= px < W and 0 <= py < H):
-                continue
-            w = np.exp(-(dx*dx + dy*dy) / (2 * weighted_sig**2))
-            b = int(ORI_BINS * ori[py, px] / (2 * np.pi)) % ORI_BINS
-            hist[b] += w * mag[py, px]
+    if x0 <= x1 and y0 <= y1:
+        dy, dx = np.mgrid[y0 - cy:y1 - cy + 1, x0 - cx:x1 - cx + 1]
+        w = np.exp(-(dx * dx + dy * dy) / (2 * weighted_sig ** 2))
+        o = ori[y0:y1 + 1, x0:x1 + 1]
+        b = (ORI_BINS * o / (2 * np.pi)).astype(int) % ORI_BINS
+        hist = np.bincount(b.ravel(), weights=(w * mag[y0:y1 + 1, x0:x1 + 1]).ravel(),
+                           minlength=ORI_BINS).astype(np.float64)
 
     # smoothing
     for _ in range(6):
-        hist = (np.roll(hist, 1) + hist + np.roll(hist, -1)) / 3   
+        hist = (np.roll(hist, 1) + hist + np.roll(hist, -1)) / 3
 
     out = []
 
@@ -151,44 +153,54 @@ def generate_descriptor(keypoint: Keypoint, gradients: GradientCache) -> Optiona
     hist_width = DESC_SCALE_FACTOR * keypoint.sigma # number of pixels in the subblock
     radius = int(round(hist_width * np.sqrt(2) * (DESC_WIDTH + 1) * 0.5))
     weight_sigma = 0.5 * DESC_WIDTH
-    hist = np.zeros((DESC_WIDTH + 2, DESC_WIDTH + 2, DESC_BINS))
+    side = DESC_WIDTH + 2
+    hist = np.zeros(side * side * DESC_BINS)
 
+    # Window around the keypoint, clipped to pixels strictly inside the image
     cx, cy = int(round(keypoint.x)), int(round(keypoint.y))
-    for dy in range(-radius, radius+1):
-        for dx in range(-radius, radius+1):
-            # rotate offset into keypoint frame
-            rx = ( cos_t * dx + sin_t * dy) / hist_width
-            ry = (-sin_t * dx + cos_t * dy) / hist_width
+    x0, x1 = max(cx - radius, 1), min(cx + radius, W - 2)
+    y0, y1 = max(cy - radius, 1), min(cy + radius, H - 2)
 
-            cbin = rx + DESC_WIDTH / 2 - 0.5
-            rbin = ry + DESC_WIDTH / 2 - 0.5
-            if not (-1 < rbin < DESC_WIDTH and -1 < cbin < DESC_WIDTH):
-                continue
-            px, py = cx + dx, cy + dy
-            if not (0 < px < W - 1 and 0 < py < H - 1):
-                continue
+    if x0 <= x1 and y0 <= y1:
+        # rotate every offset in the window into the keypoint frame
+        dy, dx = np.mgrid[y0 - cy:y1 - cy + 1, x0 - cx:x1 - cx + 1]
+        rx = ( cos_t * dx + sin_t * dy) / hist_width
+        ry = (-sin_t * dx + cos_t * dy) / hist_width
+
+        cbin = rx + DESC_WIDTH / 2 - 0.5
+        rbin = ry + DESC_WIDTH / 2 - 0.5
+        keep = (-1 < rbin) & (rbin < DESC_WIDTH) & (-1 < cbin) & (cbin < DESC_WIDTH)
+
+        if keep.any():
+            rx, ry, rbin, cbin = rx[keep], ry[keep], rbin[keep], cbin[keep]
+            o = ori[y0:y1 + 1, x0:x1 + 1][keep]
+            m = mag[y0:y1 + 1, x0:x1 + 1][keep]
 
             # orientation relative to keypoint
-            theta = (ori[py, px] - keypoint.angle) % (2 * np.pi)
+            theta = (o - keypoint.angle) % (2 * np.pi)
             obin = theta * DESC_BINS / (2 * np.pi)
-            w = np.exp(-(rx ** 2 + ry ** 2) / (2 * weight_sigma ** 2))
-            m = w * mag[py, px]
+            m = np.exp(-(rx ** 2 + ry ** 2) / (2 * weight_sigma ** 2)) * m
 
-            r0, c0, o0 = int(np.floor(rbin)), int(np.floor(cbin)), int(np.floor(obin))
+            # trilinear interpolation into the (row, col, orientation) histogram
+            r0, c0, o0 = (np.floor(rbin).astype(int), np.floor(cbin).astype(int),
+                          np.floor(obin).astype(int))
             dr, dc, do = rbin - r0, cbin - c0, obin - o0
             for ir, wr in ((0, 1 - dr), (1, dr)):
                 for ic, wc in ((0, 1 - dc), (1, dc)):
                     for io, wo in ((0, 1 - do), (1, do)):
-                        hist[r0 + 1 + ir, c0 + 1 + ic, (o0 + io) % DESC_BINS] += m * wr * wc * wo
+                        idx = ((r0 + 1 + ir) * side + (c0 + 1 + ic)) * DESC_BINS \
+                              + (o0 + io) % DESC_BINS
+                        hist += np.bincount(idx, weights=m * wr * wc * wo,
+                                            minlength=hist.size)
 
     # generate the 128-D vector from histograms
-    desc = hist[1:-1, 1:-1, :].ravel() 
+    desc = hist.reshape(side, side, DESC_BINS)[1:-1, 1:-1, :].ravel()
 
     # normalisation
     desc /= max(np.linalg.norm(desc), 1e-7)
     desc = np.minimum(desc, DESC_MAG_CLIP)
     desc /= max(np.linalg.norm(desc), 1e-7)
-    
+
     return desc.astype(np.float32)
 
 def sift_describe(image: np.ndarray, keypoints: List[Keypoint]) -> Tuple[List[Keypoint], np.ndarray]:
