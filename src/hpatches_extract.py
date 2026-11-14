@@ -116,7 +116,10 @@ class PatchDescriptor:
         P = len(patches)
         img = patches.astype(np.float32) / np.float32(255.0)  # == to_grayscale for uint8
 
-        L = gaussian_filter(img, sigma=(0, self.blur, self.blur))
+        # Match gaussian_blur's reflected edges and 3-sigma kernel radius.
+        radius = int(np.ceil(3 * self.blur))
+        L = gaussian_filter(img, sigma=(0, self.blur, self.blur),
+                            mode="mirror", radius=(0, radius, radius))
         gx = np.zeros_like(L)
         gy = np.zeros_like(L)
         gx[:, :, 1:-1] = L[:, :, 2:] - L[:, :, :-2]

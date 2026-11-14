@@ -1,4 +1,4 @@
-"""Compatibility tests: Harris-Laplace / DoG detectors -> SIFT descriptor -> matcher.
+"""Compatibility tests: Harris / DoG detectors -> SIFT descriptor -> matcher.
 
 Run from the project folder (next to harris.py, dog.py, sift.py, ...):
 
@@ -35,7 +35,7 @@ import numpy as np
 
 from detector_helpers import Keypoint, to_grayscale, to_opencv_keypoints
 from dog import DoGDetector
-from harris import HarrisLaplaceDetector
+from harris import HarrisDetector
 from matcher import BFMatcher
 from sift import sift_describe
 
@@ -280,10 +280,10 @@ def main() -> int:
     gray = test_grayscale(rgb, bgr)
 
     if args.defaults:
-        detectors = [("Harris-Laplace", HarrisLaplaceDetector()), ("DoG", DoGDetector())]
+        detectors = [("Harris", HarrisDetector()), ("DoG", DoGDetector())]
     else:
         # Smaller top scales keep the pure-Python SIFT loops quick.
-        detectors = [("Harris-Laplace", HarrisLaplaceDetector(num_scales=8, max_points=150)),
+        detectors = [("Harris", HarrisDetector(num_scales=8, max_points=150)),
                      ("DoG", DoGDetector(num_octaves=3))]
 
     for name, detector in detectors:
