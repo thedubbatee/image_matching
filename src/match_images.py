@@ -70,7 +70,7 @@ def main():
 
     keypoints_a, descriptors_a = describe_image(image_a, detector)
     keypoints_b, descriptors_b = describe_image(image_b, detector)
-    matches = BFMatcher().match(descriptors_a, descriptors_b)
+    matches = BFMatcher(ratio=0.6).match(descriptors_a, descriptors_b)
     print(
         f"Image A: {len(keypoints_a)} described keypoints; "
         f"image B: {len(keypoints_b)} described keypoints; "
