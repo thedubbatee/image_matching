@@ -1,10 +1,10 @@
 import cv2
-from harris import HarrisLaplaceDetector
+from harris import HarrisDetector
 from dog import DoGDetector
 
 image = cv2.imread("image.jpg")
 
-for name, detector in (("harris", HarrisLaplaceDetector()), ("dog", DoGDetector())):
+for name, detector in (("harris", HarrisDetector()), ("dog", DoGDetector())):
     keypoints = detector.detect(image)
 
     print(f"Detected {len(keypoints)} {name} keypoints")

@@ -1,9 +1,8 @@
 import numpy as np
 from typing import List, Optional, Tuple
 from dataclasses import replace
-from scipy.ndimage import gaussian_filter
 
-from detector_helpers import Keypoint, to_grayscale
+from detector_helpers import Keypoint, gaussian_blur, to_grayscale
 
 """
 SIFT Feature Descriptor
@@ -93,7 +92,7 @@ class GradientCache:
         sq = self._quantise(sigma)
         if sq not in self._cache:
             extra = np.sqrt(max(sq ** 2 - self.assumed_blur ** 2, 0.01))
-            L = gaussian_filter(self.image, extra)
+            L = gaussian_blur(self.image, extra)
             dx = np.zeros_like(L)
             dy = np.zeros_like(L)
             dx[:, 1:-1] = L[:, 2:] - L[:, :-2]
