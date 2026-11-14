@@ -8,27 +8,31 @@ from detector_helpers import Keypoint, to_grayscale
 
 
 class DoGDetector:
-    """Difference of Gaussians scale-space keypoint detector."""
+    """Difference of Gaussians keypoint detector."""
 
     def __init__(
         self,
         num_octaves: int = 4,
         scales_per_octave: int = 3,
-        sigma: float = 1.6,
-        contrast_threshold: float = 0.03,
-        edge_threshold: float = 10.0,
+        sigma: float = 1.6, 
+        contrast_threshold: float = 0.03, # minimum absolute difference of gaussians response.
+        edge_threshold: float = 10.0, # ued to reject edges,
+        assumed_blur: float = 0.5
     ):
+        if assumed_blur < 0:
+            raise ValueError("assumed_blue must be positive.")
         if num_octaves < 1:
             raise ValueError("num_octaves must be at least 1")
         if scales_per_octave < 1:
             raise ValueError("scales_per_octave must be at least 1")
-        if sigma <= 0:
-            raise ValueError("sigma must be positive")
+        if sigma < assumed_blur:
+            raise ValueError("sigma must be at least the assumed blur.")
         if contrast_threshold < 0:
             raise ValueError("contrast_threshold must be non-negative")
         if edge_threshold <= 0:
             raise ValueError("edge_threshold must be positive")
-
+        
+        self.assumed_blur = assumed_blur
         self.num_octaves = num_octaves
         self.scales_per_octave = scales_per_octave
         self.sigma = sigma
@@ -38,13 +42,8 @@ class DoGDetector:
     def detect(self, image: np.ndarray) -> list[Keypoint]:
         gray = to_grayscale(image)
 
-        # Establish the initial Gaussian scale.
         # Input images are assumed to have an initial blur of sigma 0.5.
-        assumed_blur = 0.5
-        if self.sigma < assumed_blur:
-            raise ValueError(
-                "sigma must be at least the assumed input blur (0.5)"
-            )
+        assumed_blur = self.assumed_blur
 
         initial_sigma = np.sqrt(self.sigma**2 - assumed_blur**2)
         base = cv2.GaussianBlur(
