@@ -9,7 +9,6 @@ import numpy as np
 import cv2
 from scipy.spatial.distance import cdist
 
-
 @dataclass(frozen=True)
 class Match:
     """Matched descriptor pair between two images."""
@@ -17,7 +16,6 @@ class Match:
     query_idx: int
     train_idx: int
     distance: float
-
 
 class BFMatcher:
     """Brute-force L2 descriptor matcher with mutual cross-checking"""
