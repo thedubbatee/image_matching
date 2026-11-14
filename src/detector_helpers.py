@@ -1,8 +1,8 @@
-"""Shared data types and image utilities for Harris–Laplace, DoG and SIFT.
+"""Shared data types and image utilities for Harris-Laplace, DoG and SIFT.
 
 Conventions for all stages:
-    x, y  : coordinates in the ORIGINAL image (pixels).
-    sigma : Gaussian feature scale in ORIGINAL-image pixels.
+    x, y  : coordinates in the original image.
+    sigma : Gaussian feature scale in original-image pixels.
     angle : dominant orientation in radians, or None if not yet assigned.
 
 The descriptor should consume these common fields, regardless of detector.
@@ -18,8 +18,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class Keypoint:
-    """A feature location, independent of the algorithm that detected it."""
-
+    """A feature location"""
     x: float # Col
     y: float # Row
     sigma: float # Scale
@@ -59,16 +58,16 @@ def gaussian_blur(image: np.ndarray, sigma: float) -> np.ndarray:
 
 
 def to_grayscale(image: np.ndarray) -> np.ndarray:
-    """Convert a grayscale or OpenCV-style BGR/BGRA image to float32 [0, 1].
+    """Convert a greyscale or OpenCV-style BGR/BGRA image to greyscale, in float32 from[0, 1].
 
     Accepted inputs are uint8 images or float arrays with intensities in
-    [0, 1] or [0, 255]. Three-channel input is assumed to be BGR.
+    [0, 1] or [0, 255].
     """
     pixels = np.asarray(image)
     if pixels.ndim == 2:
         gray = pixels
     elif pixels.ndim == 3 and pixels.shape[2] in (3, 4):
-        # OpenCV channel order: blue, green, red; ignore optional alpha.
+        # OpenCV channel order: blue, green, red;
         gray = (0.114 * pixels[..., 0] +
                 0.587 * pixels[..., 1] +
                 0.299 * pixels[..., 2])
@@ -85,7 +84,7 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
     if np.min(gray) < 0 or np.max(gray) > 255:
         raise ValueError("Pixel values must be in [0, 1] or [0, 255]")
 
-    # uint8 images are always interpreted as 0..255, even if very dark.
+    # uint8 images are always interpreted as 0..255.
     if np.issubdtype(pixels.dtype, np.integer) or np.max(gray) > 1.0:
         gray /= 255.0
     return gray
@@ -95,9 +94,9 @@ def to_opencv_keypoints(points: Sequence[Keypoint]) -> list:
     """Optional conversion for OpenCV drawing, SIFT and benchmarking.
 
     OpenCV's size is a diameter, while our sigma is a Gaussian standard
-    deviation. size=2*sigma is a convenient *adapter convention*, not a
-    guarantee of identical descriptor support-region scaling. Angles are
-    converted from shared radians to OpenCV degrees; None becomes -1.
+    deviation. size=2*sigma is a convenient way to convert but doesn't
+    guarantee the same scaling. Angles are
+    converted from radians to OpenCV, and None becomes -1.
     """
     try:
         import cv2
