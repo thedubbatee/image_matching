@@ -18,8 +18,7 @@ Algorithm:
 6. Cap + normalise the descriptor
 """
 
-
-# Constants - (Taken from Lowe 2004)
+# Constants - (Taken from Lowe 2004) Paper (should update later to improve benchmark)
 ORI_BINS = 36 # histogram has 36 bins of 10 degrees each
 ORI_SIGMA_FACTOR = 1.5 # weighted sigma = 1.5 * keypoint sigma
 ORI_RADIUS_FACTOR = 3.0 # window radius = 3 * weighted sigma
@@ -30,15 +29,17 @@ DESC_BINS = 8 # 8 orientation bins per cell
 DESC_SCALE_FACTOR = 3.0 # each cell is 3 * sigma pixels wide
 DESC_MAG_CLIP = 0.2 # Capped value after first normalisation of descriptor
 
+# Previous keypoint helpers used for initial testing - not required anymore. Keypoint instances passed directly
+# into sift_describe from the feature detectors.
 def harris_laplace_keypoint(points: np.ndarray, sigma_is_derivation=False, s=0.7) -> List[Keypoint]:
     """
     points: (N, 3) keypoints generated from harris-laplace feature detector
     sigma_is_derivation=False is correct for our implementation, the integration sigma is provided.
-
-    returns: a standardised keypoint (Keypoint instance) that the sift algorithm can use to compute a descriptor.
+    returns: a standardised keypoint (instance of the Keypoint class) that the sift algorithm can use to compute a descriptor.
     """
     keypoints = []
     for x, y, sig in points:
+        # adjust to integration scale for SIFT
         if sigma_is_derivation:
             sig = sig / s
         keypoints.append(Keypoint(x=float(x), y=float(y), sigma=float(sig)))
@@ -47,22 +48,24 @@ def harris_laplace_keypoint(points: np.ndarray, sigma_is_derivation=False, s=0.7
 
 
 def difference_of_gaussians_keypoint(points: np.ndarray, sigma_0: float = 1.6, n_layers: int = 3, 
-                                     octave_unsampled: bool = True) -> List[Keypoint]:
+                                     octave_upsampled: bool = True) -> List[Keypoint]:
     """
-    points: (N, 3) keypoints generated from difference of gaussians feature detector
-    num
-    returns: a standardised keypoint (Keypoint instance) that the sift algorithm can use to compute a descriptor.
+    points: DoG keypoints (x,y,octave, layer[...]) generated from difference of gaussians feature detector
+    returns: a standardised keypoint (instance of the Keypoint class) that the sift algorithm can use to compute a descriptor.
+    Set octave_upsampled if the detector doubled the image first.
     """
     keypoints = []
     for p in points:
         x, y, octave, layer = p[:4]
-        frac = p[4] if len(p) > 4 else 0.0 # Sub-level offset from refinement
+        frac = p[4] if len(p) > 4 else 0.0
         resp = p[5] if len(p) > 5 else 0.0
 
         # scale within the octave, then up to the original image
         sig_oct = sigma_0 * 2.0 ** ((layer + frac) / n_layers)
         factor = 2.0 ** octave
-        if octave_unsampled:
+
+        # if the original input image is enlarged before the scale space is built
+        if octave_upsampled:
             factor *= 0.5
 
         keypoints.append(Keypoint(x=x * factor, y=y * factor, sigma=sig_oct * factor, response=float(resp)))
@@ -71,12 +74,11 @@ def difference_of_gaussians_keypoint(points: np.ndarray, sigma_0: float = 1.6, n
 
 class GradientCache:
     """
-    Blurs the image to the scale each keypoint needs and caches gradients.
-    Simple version: quantise sigma to a log grid and blur the full image once
-    per level.
+    Blurs the image to the scale each keypoint needs and caches gradients. This assumes
+    the original input image as a blur of 0.5. Also stores the gradient maps generated for each
+    scale.
     """
-    def __init__(self, image: np.ndarray, assumed_blur: float = 0.5,
-                 levels_per_octave: int = 6):
+    def __init__(self, image: np.ndarray, assumed_blur: float = 0.5, levels_per_octave: int = 6):
         self.image = image.astype(np.float32)
         if self.image.max() > 1.0:
             self.image /= 255.0
@@ -85,11 +87,12 @@ class GradientCache:
         self._cache = {}
  
     def _quantise(self, sigma: float) -> float:
+        # quantise sigma onto a log grid with 6 levels per octave
         k = np.round(np.log2(sigma) * self.levels_per_octave)
         return 2.0 ** (k / self.levels_per_octave)
  
     def get(self, sigma: float) -> Tuple[np.ndarray, np.ndarray]:
-        """Return (magnitude, orientation in [0, 2pi)) at blur level sigma."""
+        # return (magnitude, orientation in [0, 2pi)) at blur level sigma
         sq = self._quantise(sigma)
         if sq not in self._cache:
             extra = np.sqrt(max(sq ** 2 - self.assumed_blur ** 2, 0.01))
@@ -101,20 +104,29 @@ class GradientCache:
             mag = np.hypot(dx, dy)
             ori = np.mod(np.arctan2(dy, dx), 2 * np.pi)
             self._cache[sq] = (mag, ori)
+
         return self._cache[sq]
     
 def assign_orientations(keypoint: Keypoint, gradients: GradientCache) -> List[Keypoint]:
+    """
+    Gives each keypoint a dominant direction which allows for the SIFT descriptor to be 
+    rotation invariant.
+    """
+
+    # get the gradient map for the keypoint's scale
     mag, ori = gradients.get(keypoint.sigma)
     H, W = mag.shape
     weighted_sig = ORI_SIGMA_FACTOR * keypoint.sigma
     radius = int(round(ORI_RADIUS_FACTOR * weighted_sig))
     cx, cy = int(round(keypoint.x)), int(round(keypoint.y))
 
-    # Window around the keypoint, clipped to the image
+    # window around the keypoint, clipped to the image
     x0, x1 = max(cx - radius, 0), min(cx + radius, W - 1)
     y0, y1 = max(cy - radius, 0), min(cy + radius, H - 1)
     hist = np.zeros(ORI_BINS)
 
+    # weighting of the pixel gradients by a gaussian on its distance from the centre,
+    # then adds it to one of the 36 orientation bins
     if x0 <= x1 and y0 <= y1:
         dy, dx = np.mgrid[y0 - cy:y1 - cy + 1, x0 - cx:x1 - cx + 1]
         w = np.exp(-(dx * dx + dy * dy) / (2 * weighted_sig ** 2))
@@ -129,7 +141,7 @@ def assign_orientations(keypoint: Keypoint, gradients: GradientCache) -> List[Ke
 
     out = []
 
-    # drop the keypoint if the histogram is empty (completely flat with no gradient)
+    # drop the keypoint if the histogram is all zeros - the patch is completely flat
     if hist.max() <= 0:
         return out
 
@@ -146,6 +158,11 @@ def assign_orientations(keypoint: Keypoint, gradients: GradientCache) -> List[Ke
     return out
 
 def generate_descriptor(keypoint: Keypoint, gradients: GradientCache) -> Optional[np.ndarray]:
+    """
+    Builds the 128-D SIFT descriptor: a 4x4 grid of 8-bin orientation histograms, aligned to the angle stored within keypoint.
+    Also applies normalisation, and checks if the window falls outside of the image (returns all zeros in this case).
+    """
+
     mag, ori = gradients.get(keypoint.sigma)
     H, W = mag.shape
     cos_t, sin_t = np.cos(keypoint.angle), np.sin(keypoint.angle)
@@ -195,9 +212,14 @@ def generate_descriptor(keypoint: Keypoint, gradients: GradientCache) -> Optiona
 
     # generate the 128-D vector from histograms
     desc = hist.reshape(side, side, DESC_BINS)[1:-1, 1:-1, :].ravel()
+    norm = np.linalg.norm(desc)
+
+    # check for empty window or flat patch (no descriptor)
+    if norm < 1e-7:            
+        return None
 
     # normalisation
-    desc /= max(np.linalg.norm(desc), 1e-7)
+    desc /= norm
     desc = np.minimum(desc, DESC_MAG_CLIP)
     desc /= max(np.linalg.norm(desc), 1e-7)
 
@@ -207,8 +229,8 @@ def sift_describe(image: np.ndarray, keypoints: List[Keypoint]) -> Tuple[List[Ke
     """
     image: a H x W greyscale image.
     keypoints: a list of standardised keypoints generated from either DoG or HL detectors
-
-    returns: a tuple of a list of keypoints (one for each descriptor), and a np.darray
+    returns: a tuple of a list of keypoints (one for each descriptor), and a np.ndarray for
+    the descriptors.
     """
 
     gray = to_grayscale(image)
