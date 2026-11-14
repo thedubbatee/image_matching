@@ -27,6 +27,37 @@ class Keypoint:
     angle: float | None = None # Radians
 
 
+def gaussian_blur(image: np.ndarray, sigma: float) -> np.ndarray:
+    """Blur a 2D image with a separable Gaussian kernel.
+     Edges are treated as reflections (e.g. abc becomes cbabcba).
+    The result is a np array of floats
+    """
+    pixels = np.asarray(image, dtype=np.float32)
+    if pixels.ndim != 2:
+        raise ValueError("Gaussian blur expects a 2D image")
+    if not np.isfinite(sigma) or sigma < 0:
+        raise ValueError("Gaussian sigma must be finite and non-negative")
+    if sigma == 0:
+        return pixels.copy()
+
+    radius = max(1, int(np.ceil(3 * sigma)))
+    offsets = np.arange(-radius, radius + 1)
+    weights = np.exp(-0.5 * (offsets / sigma) ** 2)
+    weights = (weights / weights.sum()).astype(np.float32)
+
+    height, width = pixels.shape
+    padded = np.pad(pixels, ((0, 0), (radius, radius)), mode="reflect")
+    horizontal = np.zeros_like(pixels)
+    for offset, weight in enumerate(weights):
+        horizontal += weight * padded[:, offset:offset + width]
+
+    padded = np.pad(horizontal, ((radius, radius), (0, 0)), mode="reflect")
+    blurred = np.zeros_like(pixels)
+    for offset, weight in enumerate(weights):
+        blurred += weight * padded[offset:offset + height, :]
+    return blurred
+
+
 def to_grayscale(image: np.ndarray) -> np.ndarray:
     """Convert a grayscale or OpenCV-style BGR/BGRA image to float32 [0, 1].
 
