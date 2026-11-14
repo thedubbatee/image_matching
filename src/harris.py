@@ -1,8 +1,7 @@
-"""Harris and simplified Harris-Laplace feature detectors.
+"""Harris corner detector with Difference of Gaussians scale selection.
 
-Implements the simplified Harris-Laplace method of Mikolajczyk & Schmid (2004):
-spatial Harris maxima at several scales, then characteristic scale selection
-with the magnitude of the scale-normalised Laplacian of Gaussian.
+Finds spatial Harris maxima at several scales, then selects characteristic
+scales with the magnitude of adjacent Gaussian differences.
 
 Detector and shared keypoints: NumPy + SciPy only. OpenCV is optional for conversion.
 Images are assumed to be greyscale or OpenCV-style BGR (H, W, 3) arrays.
@@ -12,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 from detector_helpers import Keypoint, to_grayscale, to_opencv_keypoints
-from scipy.ndimage import gaussian_filter, gaussian_laplace, maximum_filter
+from scipy.ndimage import gaussian_filter, maximum_filter
 
 
 def _harris_response(gray: np.ndarray, sigma_i: float, k: float,
@@ -34,22 +33,25 @@ def _harris_response(gray: np.ndarray, sigma_i: float, k: float,
 
 
 class HarrisLaplaceDetector:
-    """Simplified Harris-Laplace corner detector (Mikolajczyk-Schmid, 2004).
+    """Harris corner detector with DoG scale selection.
+
+    The class name is retained for existing callers.
 
     Parameters:
       sigma0: first Gaussian integration scale in input pixels.
       scale_factor: geometric step between successive sigma levels; 1.4 in paper.
-      num_scales: number of scales; first and last are LoG guard levels.
+      num_scales: number of scales; first and last are DoG guard levels.
       k: Harris free parameter, normally 0.04-0.06.
       differentiation_ratio: sigma_D / sigma_I; 0.7 in the paper.
       harris_threshold: relative to the largest positive Harris response PER SCALE.
-      laplacian_threshold: relative to the largest abs normalised LoG PER SCALE.
+      laplacian_threshold: relative to the largest abs DoG PER SCALE;
+        the argument name is retained for existing callers.
       max_points: max returned keypoints (after nonmaximum suppression).
       dedup_radius: avoid essentially duplicate corners across neighbouring scales;
         in units of min(sigma_i, sigma_j).
 
-    Note: this is the paper's faster *simplified* algorithm. It does not
-    iteratively refine corner position/scale, nor assign affine shape.
+    This simplified detector does not iteratively refine corner position/scale
+    or assign affine shape.
     """
 
     def __init__(self, sigma0: float = 1.2, scale_factor: float = 1.4,
@@ -80,20 +82,19 @@ class HarrisLaplaceDetector:
         self.scale_factor = scale_factor
 
     def detect_points(self, image: np.ndarray) -> list[Keypoint]:
-        """Detect Harris-Laplace points, sorted strongest corner response first.
+        """Detect Harris corners, sorted strongest corner response first.
 
-        Scale selection is a 1-D local maximum of |sigma^2 * Laplacian| over
+        Scale selection is a 1-D local maximum of absolute DoG response over
         neighbouring scales, evaluated at each spatial Harris corner maximum.
         """
         gray = to_grayscale(image)
         h, w = gray.shape
-        laplacians = []
-        lap_maxima = []
-        for sigma in self.scales:
-            lap = np.abs((sigma * sigma) * gaussian_laplace(
-                gray, sigma=sigma, mode='reflect'))
-            laplacians.append(lap)
-            lap_maxima.append(float(np.max(lap)))
+        # One extra Gaussian supplies the upper end of the final difference.
+        gaussians = [gaussian_filter(gray, sigma, mode='reflect')
+                     for sigma in (*self.scales, self.scales[-1] * self.scale_factor)]
+        dogs = [np.abs(gaussians[i] - gaussians[i + 1])
+                for i in range(len(self.scales))]
+        dog_maxima = [float(np.max(dog)) for dog in dogs]
 
         candidates: list[Keypoint] = []
         # Only interior scale levels have a neighbour on both sides.
@@ -102,17 +103,16 @@ class HarrisLaplaceDetector:
             response = _harris_response(gray, sigma, self.k,
                                         self.differentiation_ratio)
             top = float(np.max(response))
-            if top <= 0 or lap_maxima[i] <= 0:
+            if top <= 0 or dog_maxima[i] <= 0:
                 continue
             is_spatial_maximum = response == maximum_filter(
                 response, size=3, mode='nearest')
             is_corner = is_spatial_maximum & (
                 response > max(0.0, self.harris_threshold * top))
 
-            curr, prev, nxt = (laplacians[i], laplacians[i-1],
-                               laplacians[i+1])
+            curr, prev, nxt = (dogs[i], dogs[i-1], dogs[i+1])
             is_scale_maximum = ((curr > prev) & (curr > nxt) &
-                                (curr > self.laplacian_threshold * lap_maxima[i]))
+                                (curr > self.laplacian_threshold * dog_maxima[i]))
             mask = is_corner & is_scale_maximum
             # The Gaussian filter and descriptor neighbourhood are not
             # trustworthy close to an image boundary.
@@ -136,8 +136,7 @@ class HarrisLaplaceDetector:
                     if self.max_points is not None else candidates)
 
         selected: list[Keypoint] = []
-        # Most detections aren't nearby; grid bucketing avoids O(N^2) on
-        # large images with many corners. Keep original-scale coordinates.
+
         cell_size = max(2.0, 2 * self.scales[-2] * max(1.0, self.dedup_radius))
         grid: dict[tuple[int, int], list[Keypoint]] = {}
         for point in candidates:
