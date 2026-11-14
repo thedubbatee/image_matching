@@ -10,7 +10,7 @@ Images are assumed to be greyscale or OpenCV-style BGR (H, W, 3) arrays.
 from __future__ import annotations
 
 import numpy as np
-from detector_helpers import Keypoint, to_grayscale, to_opencv_keypoints
+from detector_helpers import Keypoint, gaussian_blur, to_grayscale, to_opencv_keypoints
 from scipy.ndimage import gaussian_filter, maximum_filter
 
 
@@ -26,9 +26,9 @@ def _harris_response(gray: np.ndarray, sigma_i: float, k: float,
     # Gaussian derivatives, multiplied by sigma_D to normalise their scale.
     ix = gaussian_filter(gray, sigma_d, order=(0, 1), mode='reflect') * sigma_d
     iy = gaussian_filter(gray, sigma_d, order=(1, 0), mode='reflect') * sigma_d
-    a = gaussian_filter(ix * ix, sigma_i, mode='reflect')
-    b = gaussian_filter(iy * iy, sigma_i, mode='reflect')
-    c = gaussian_filter(ix * iy, sigma_i, mode='reflect')
+    a = gaussian_blur(ix * ix, sigma_i)
+    b = gaussian_blur(iy * iy, sigma_i)
+    c = gaussian_blur(ix * iy, sigma_i)
     return a * b - c * c - k * (a + b) ** 2
 
 
@@ -90,7 +90,7 @@ class HarrisLaplaceDetector:
         gray = to_grayscale(image)
         h, w = gray.shape
         # One extra Gaussian supplies the upper end of the final difference.
-        gaussians = [gaussian_filter(gray, sigma, mode='reflect')
+        gaussians = [gaussian_blur(gray, sigma)
                      for sigma in (*self.scales, self.scales[-1] * self.scale_factor)]
         dogs = [np.abs(gaussians[i] - gaussians[i + 1])
                 for i in range(len(self.scales))]
@@ -99,7 +99,7 @@ class HarrisLaplaceDetector:
         candidates: list[Keypoint] = []
         # Only interior scale levels have a neighbour on both sides.
         for i in range(1, len(self.scales) - 1):
-            sigma = self.scales[i]
+            sigma = self.scales[i] * (self.scale_factor ** 0.5)
             response = _harris_response(gray, sigma, self.k,
                                         self.differentiation_ratio)
             top = float(np.max(response))

@@ -4,7 +4,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from detector_helpers import Keypoint, to_grayscale
+from detector_helpers import Keypoint, gaussian_blur, to_grayscale
 
 
 class DoGDetector:
@@ -46,9 +46,7 @@ class DoGDetector:
         assumed_blur = self.assumed_blur
 
         initial_sigma = np.sqrt(self.sigma**2 - assumed_blur**2)
-        base = cv2.GaussianBlur(
-            gray, (0, 0), sigmaX=initial_sigma
-        )
+        base = gaussian_blur(gray, initial_sigma)
 
         k = 2.0 ** (1.0 / self.scales_per_octave)
         num_gaussian = self.scales_per_octave + 3
@@ -70,11 +68,7 @@ class DoGDetector:
                     current_sigma**2 - previous_sigma**2
                 )
 
-                blurred = cv2.GaussianBlur(
-                    gaussian_images[-1],
-                    (0, 0),
-                    sigmaX=incremental_sigma,
-                )
+                blurred = gaussian_blur(gaussian_images[-1], incremental_sigma)
                 gaussian_images.append(blurred)
 
             # D[i] = G[i+1] - G[i].
