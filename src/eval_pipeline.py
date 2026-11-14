@@ -58,7 +58,7 @@ from scipy.spatial.distance import cdist
 
 from detector_helpers import Keypoint
 from dog import DoGDetector
-from harris import HarrisLaplaceDetector
+from harris import HarrisDetector
 from matcher import BFMatcher
 from sift import sift_describe
 
@@ -123,7 +123,7 @@ def extract(method: str, img: np.ndarray, n: int) -> dict:
         return dict(det_xy=det_xy, desc_xy=xy, desc=desc,
                     t_detect=t1 - t0, t_describe=0.0, shape=np.array(img.shape[:2]))
 
-    detector = HarrisLaplaceDetector(max_points=None) if method == "harris" else DoGDetector()
+    detector = HarrisDetector(max_points=None) if method == "harris" else DoGDetector()
     kps = top_n(detector.detect(img), n)
     t1 = time.perf_counter()
     out_kps, desc = sift_describe(img, kps)
