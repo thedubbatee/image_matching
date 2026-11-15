@@ -169,7 +169,7 @@ def repeatability(f1: dict, fn: dict, H: np.ndarray) -> float:
 def pair_metrics(f1: dict, fn: dict, H: np.ndarray) -> dict:
     row = dict(kps1=len(f1["det_xy"]), kpsn=len(fn["det_xy"]),
                repeatability=repeatability(f1, fn, H))
-    matches = BFMatcher().match(f1["desc"], fn["desc"])
+    matches = BFMatcher(ratio=0.8).match(f1["desc"], fn["desc"])
     row["matches"] = len(matches)
     if matches:
         q = np.array([m.query_idx for m in matches])
