@@ -1,11 +1,10 @@
-# image_matching
 ## Testing and evaluation
 
-The repository has three separate kinds of testing, all built around the [HPatches](https://github.com/hpatches/hpatches-dataset) dataset or synthetic images:
+The repository has three separate kinds of testing, all using the [HPatches](https://github.com/hpatches/hpatches-dataset) dataset:
 
 | Section | Purpose | Data | Scripts |
 |---|---|---|---|
-| [Detector correctness](#detector-correctness) | Check that the Harris and DoG detectors re-detect the same points under known transformations, and find the structures they are designed to find | HPatches **image sequences**, synthetic images, your own photos | `test_comp.py`, `correctness_test.py`, `detector_comparison.py`, `main.py` |
+| [Detector correctness](#detector-correctness) | Check that the Harris and DoG detectors re-detect the same points, at the right scale, under known transformations | HPatches **image sequences** (696 images, 1.3 GB) | `test_comp.py`, `correctness_test.py` |
 | [SIFT descriptor: correctness and benchmarking](#sift-descriptor-correctness-and-benchmarking) | Check that our SIFT descriptor is correct, and benchmark it against OpenCV's SIFT | HPatches **patches** (4.2 GB) | `test_comp.py`, `hpatches_extract.py`, `hpatches_extract_opencv.py` + the official `hpatches-benchmark` toolkit |
 | [Pipeline comparison: Harris vs DoG](#pipeline-comparison-harris-vs-dog) | Compare the two full pipelines (detector + SIFT + matcher) directly | HPatches **image sequences** (696 images, 1.3 GB) | `eval_pipeline.py` |
 
@@ -26,7 +25,7 @@ The commands assume this layout (any other location works if you change the path
 │       ├── hpatches-release/        # patch dataset
 │       └── descriptors/             # descriptor CSVs written by our extractors
 └── data/
-    └── hpatches-sequences-release/  # image sequences (pipeline comparison)
+    └── hpatches-sequences-release/  # image sequences (detector correctness, pipeline comparison)
 ```
 
 ### Requirements
@@ -52,9 +51,6 @@ OpenCV must be 4.4 or newer (it needs `cv2.SIFT_create`).
 | `matcher.py` | Brute-force L2 matcher with cross-checking and an optional ratio test |
 | `test_comp.py` | Checks that detectors, SIFT and matcher work together correctly |
 | `correctness_test.py` | Detector correctness: re-detection under known transformations (HPatches homographies) |
-| `detector_comparison.py` | Detector correctness: runs both detectors on synthetic images with known structure |
-| `main.py` | Draws both detectors' keypoints on a photo |
-| `match_images.py` | Demo: matches two of your own images and draws the matches |
 | `hpatches_extract.py` | SIFT benchmarking: runs our SIFT on every HPatches patch |
 | `hpatches_extract_opencv.py` | SIFT benchmarking: the same with OpenCV SIFT (baseline) |
 | `eval_pipeline.py` | Pipeline comparison: Harris + SIFT vs DoG + SIFT |
@@ -63,7 +59,7 @@ OpenCV must be 4.4 or newer (it needs `cv2.SIFT_create`).
 
 ## Detector correctness
 
-This section checks two things: that each detector **re-detects the same physical points, at the right scale, when the image is transformed** (the defining property of a feature detector), and that it finds the kind of structure it is designed for. **Harris** responds to corners (strong intensity change in two directions); **DoG** responds to blobs (compact regions brighter or darker than their surroundings) at a scale matching their size. Neither test compares against OpenCV, so they measure correctness directly rather than similarity to another implementation.
+This section checks that each detector **re-detects the same physical points, at the right scale, when the image is transformed in a known way**, the defining property of a feature detector. It does not compare against OpenCV, so it measures correctness directly rather than similarity to another implementation.
 
 ### 1. Compatibility test
 
@@ -115,44 +111,6 @@ Notes on interpreting the results:
 - **Images are processed at full resolution with each detector's default settings.** Harris keeps at most 500 keypoints per image, while DoG keeps all of them (often thousands on HPatches images). With more keypoints, a nearby keypoint within 3 px is more likely by chance, so position-match rates are not directly comparable between detectors with very different keypoint counts.
 - **The scale tolerance is narrow compared with the detectors' scale steps** (DoG levels are 1.26× apart, Harris levels 1.4×). A scale match therefore usually requires detection at the corresponding level.
 - **`--max-sequences N` takes the first N sequences alphabetically,** so small values only cover illumination (`i_*`) sequences.
-
-### 3. Synthetic images with known structure
-
-`detector_comparison.py` runs both detectors on images where the correct answer is known in advance, and draws Harris keypoints in blue and DoG keypoints in orange (circles at radius 1.5σ, dots at the keypoint centres):
-
-```bash
-python3 detector_comparison.py --out figures/detectors --photo ../image.jpg
-```
-
-It writes seven figures (about 10 seconds in total; `--photo` is optional):
-
-| Figure | Image | Expected behaviour |
-|---|---|---|
-| `1_corners.png` | rectangles and a triangle | Harris fires on every corner; DoG fires at the centre of the small square and at blob-like spots just inside corners |
-| `2_checkerboard.png` | checkerboard | DoG fires at the centre of every square; Harris keeps only the board's outer corners (see below) |
-| `3_blobs.png` | dots of several sizes | DoG gives exactly one keypoint per dot, at its centre, with σ growing with the dot's radius |
-| `4_text.png` | letters | Harris fires on stroke ends, bends and junctions; DoG on stroke segments, letter holes and whole letters |
-| `5_contrast.png` | the same scene at full and at 25% contrast | Harris (relative threshold) finds about the same points; DoG (absolute threshold) finds almost none |
-| `6_sigma0.png` | rectangles and a triangle | Harris at `sigma0 = 1.2` (its default) vs `1.0` |
-| `7_photo.png` | your photo | both detectors on one image, with the fraction of points that coincide within 3 px |
-
-Figures 1–5 and 7 use Harris with `sigma0 = 1.0` (set with `--harris-sigma0`). At the default of 1.2, Harris misses sharp corners: at a sharp corner the DoG response used for scale selection peaks at a very small scale, below the smallest scale Harris can select (≈ 2.0). Figure 6 shows the difference.
-
-**Known limitations** these tests expose (they are properties of the methods, not bugs):
-
-- **X-junctions:** Harris detects the inner junctions of a checkerboard as corners, but DoG scale selection rejects them, because at a symmetric X-junction the DoG response is close to zero at every scale.
-- **Large blobs:** with the default 4 octaves, the largest scale DoG can test is σ ≈ 29, so it misses blobs wider than about 80 px (for example the tiles of a large chessboard). `DoGDetector(num_octaves=5)` doubles the range.
-- **Low contrast:** DoG's contrast threshold (0.03) is absolute, so it finds few keypoints in dark or low-contrast images.
-
-### 4. Visual check on a photo
-
-`main.py` runs both detectors with their default settings on `image.jpg` (in the current folder) and saves `detected_corners_harris.png` and `detected_corners_dog.png`, with a circle of radius 3σ at each keypoint:
-
-```bash
-python3 main.py
-```
-
-The pipeline comparison (below) also reports **repeatability**, a position-only version of the same idea, measured with an equal number of keypoints per detector.
 
 ---
 
@@ -310,16 +268,4 @@ In `results/pipeline/` (the `TAG` is e.g. `n500_s640`, from the settings used):
 
 ---
 
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| `ModuleNotFoundError: No module named 'sift'` | Run the scripts from `src/`, where `sift.py` is |
-| `SyntaxWarning: invalid escape sequence` from `docopt.py` | Harmless; comes from the toolkit's old command-line parser |
-| `'.../descriptors/<name>' does not exist` | Run the extraction (step 2.3) for that name first |
-| `AttributeError: ... 'as_matrix'` or `'trapz'` | The toolkit fixes in step 2.1 were not applied |
-| `hpatches_results.py` says `--descr` is not an option | Use `--descr-name` (the toolkit's README is wrong) |
-| Pipeline results don't change after editing a detector | Delete `results/pipeline/cache` and re-run |
-| Extraction or evaluation is slow | Normal for Python; a full extraction takes roughly 10 to 30 minutes, depending on the number of cores |
-
-Do not commit `results/`, `data/`, `figures/` or the datasets; add them to `.gitignore`.
+Do not commit `results/`, `data/` or the datasets; add them to `.gitignore`.
